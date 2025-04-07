@@ -1,0 +1,247 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Seguimiento de Autos - Kaiser Nicaragua</title>
+    <style>
+        body {
+            font-family: 'Arial', sans-serif;
+            margin: 0;
+            padding: 20px;
+            background-color: #f5f9fc;
+        }
+        header {
+            background-color: #003366;
+            color: white;
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        #map {
+            height: 60vh;
+            width: 100%;
+            border: 3px solid #003366;
+            border-radius: 8px;
+            box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+        }
+        .controls {
+            text-align: center;
+            margin: 15px 0;
+        }
+        button {
+            padding: 10px 20px;
+            margin: 0 10px;
+            background-color: #003366;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        .car-info {
+            display: flex;
+            justify-content: space-around;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        .car-box {
+            padding: 15px;
+            border-radius: 8px;
+            width: 45%;
+            min-width: 250px;
+            margin: 10px 0;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        #car1-info {
+            background-color: #ffebee;
+            border: 2px solid #f44336;
+        }
+        #car2-info {
+            background-color: #e3f2fd;
+            border: 2px solid #2196f3;
+        }
+        @media (max-width: 600px) {
+            .car-box { width: 100%; }
+        }
+    </style>
+    <!-- Leaflet fallback CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+</head>
+<body>
+    <header>
+        <h1>Kaiser University Campus Nicaragua</h1>
+        <p>Sistema de seguimiento de autos de juguete</p>
+    </header>
+    
+    <div class="controls">
+        <button onclick="startTracking()">Iniciar Seguimiento</button>
+        <button onclick="stopTracking()">Detener</button>
+        <button onclick="centerMap()">Centrar Mapa</button>
+    </div>
+    
+    <div class="car-info">
+        <div id="car1-info" class="car-box">
+            <h3>Auto 1 (Rojo)</h3>
+            <p>Latitud: <span id="car1-lat">0</span></p>
+            <p>Longitud: <span id="car1-lng">0</span></p>
+            <p>Última actualización: <span id="car1-time">Nunca</span></p>
+        </div>
+        <div id="car2-info" class="car-box">
+            <h3>Auto 2 (Azul)</h3>
+            <p>Latitud: <span id="car2-lat">0</span></p>
+            <p>Longitud: <span id="car2-lng">0</span></p>
+            <p>Última actualización: <span id="car2-time">Nunca</span></p>
+        </div>
+    </div>
+    
+    <div id="map"></div>
+
+    <!-- Leaflet fallback JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    
+    <script>
+        // ===== CONFIGURACIÓN DEL CAMPUS ===== //
+        const CAMPUS_CENTER = { lat: 12.1364, lng: -86.2514 }; // Coordenadas exactas del campus
+        const BUILDINGS = [
+            { name: "Edificio Principal", pos: { lat: 12.1366, lng: -86.2516 } },
+            { name: "Biblioteca", pos: { lat: 12.1362, lng: -86.2512 } },
+            { name: "Canchas", pos: { lat: 12.1360, lng: -86.2518 } }
+        ];
+
+        // ===== VARIABLES GLOBALES ===== //
+        let map, car1Marker, car2Marker;
+        let watchId1, watchId2;
+        let useLeaflet = false;
+
+        // ===== FUNCIONES PRINCIPALES ===== //
+        function initMap() {
+            try {
+                // Intenta cargar Google Maps
+                map = new google.maps.Map(document.getElementById("map"), {
+                    center: CAMPUS_CENTER,
+                    zoom: 17,
+                    mapTypeId: 'hybrid',
+                    streetViewControl: false
+                });
+                addBuildings();
+            } catch (e) {
+                // Fallback a Leaflet/OpenStreetMap
+                useLeaflet = true;
+                map = L.map('map').setView([CAMPUS_CENTER.lat, CAMPUS_CENTER.lng], 17);
+                L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
+                addBuildings();
+            }
+        }
+
+        function addBuildings() {
+            BUILDINGS.forEach(bld => {
+                if (useLeaflet) {
+                    L.marker([bld.pos.lat, bld.pos.lng])
+                     .addTo(map)
+                     .bindPopup(bld.name);
+                } else {
+                    new google.maps.Marker({
+                        position: bld.pos,
+                        map: map,
+                        title: bld.name,
+                        icon: "http://maps.google.com/mapfiles/ms/icons/green-dot.png"
+                    });
+                }
+            });
+        }
+
+        function startTracking() {
+            stopTracking();
+            
+            // Configura marcadores
+            if (useLeaflet) {
+                car1Marker = L.marker([CAMPUS_CENTER.lat, CAMPUS_CENTER.lng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
+                        iconSize: [25, 41]
+                    })
+                }).addTo(map);
+                
+                car2Marker = L.marker([CAMPUS_CENTER.lat, CAMPUS_CENTER.lng], {
+                    icon: L.icon({
+                        iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
+                        iconSize: [25, 41]
+                    })
+                }).addTo(map);
+            } else {
+                car1Marker = new google.maps.Marker({
+                    position: CAMPUS_CENTER,
+                    map: map,
+                    icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
+                });
+                
+                car2Marker = new google.maps.Marker({
+                    position: CAMPUS_CENTER,
+                    map: map,
+                    icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
+                });
+            }
+
+            // Inicia seguimiento
+            if (navigator.geolocation) {
+                watchId1 = navigator.geolocation.watchPosition(
+                    pos => updatePosition(1, pos),
+                    err => console.error("Error GPS Auto 1:", err),
+                    { enableHighAccuracy: true }
+                );
+                
+                watchId2 = navigator.geolocation.watchPosition(
+                    pos => updatePosition(2, pos),
+                    err => console.error("Error GPS Auto 2:", err),
+                    { enableHighAccuracy: true }
+                );
+            } else {
+                alert("Geolocalización no soportada en este dispositivo");
+            }
+        }
+
+        function updatePosition(carNum, position) {
+            const pos = {
+                lat: position.coords.latitude,
+                lng: position.coords.longitude,
+                time: new Date().toLocaleTimeString()
+            };
+            
+            if (carNum === 1) {
+                if (useLeaflet) car1Marker.setLatLng([pos.lat, pos.lng]);
+                else car1Marker.setPosition(pos);
+                document.getElementById('car1-lat').textContent = pos.lat.toFixed(6);
+                document.getElementById('car1-lng').textContent = pos.lng.toFixed(6);
+                document.getElementById('car1-time').textContent = pos.time;
+            } else {
+                if (useLeaflet) car2Marker.setLatLng([pos.lat, pos.lng]);
+                else car2Marker.setPosition(pos);
+                document.getElementById('car2-lat').textContent = pos.lat.toFixed(6);
+                document.getElementById('car2-lng').textContent = pos.lng.toFixed(6);
+                document.getElementById('car2-time').textContent = pos.time;
+            }
+        }
+
+        function stopTracking() {
+            if (watchId1) navigator.geolocation.clearWatch(watchId1);
+            if (watchId2) navigator.geolocation.clearWatch(watchId2);
+        }
+
+        function centerMap() {
+            if (useLeaflet) {
+                map.setView([CAMPUS_CENTER.lat, CAMPUS_CENTER.lng], 17);
+            } else {
+                map.setCenter(CAMPUS_CENTER);
+                map.setZoom(17);
+            }
+        }
+    </script>
+
+    <!-- Google Maps API (reemplaza con tu clave) -->
+    <script async defer
+        src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDFNnceFaKprkQ9_OK_bxtuutocUpzfYA0&callback=initMap&language=es">
+    </script>
+</body>
+</html>
