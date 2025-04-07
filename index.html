@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Seguimiento de Autos - Kaiser Nicaragua</title>
+    <title>Seguimiento de Teléfonos - Kaiser Nicaragua</title>
     <style>
         body {
             font-family: 'Arial', sans-serif;
@@ -40,13 +40,13 @@
             cursor: pointer;
             font-size: 16px;
         }
-        .car-info {
+        .phone-info {
             display: flex;
             justify-content: space-around;
             margin: 20px 0;
             flex-wrap: wrap;
         }
-        .car-box {
+        .phone-box {
             padding: 15px;
             border-radius: 8px;
             width: 45%;
@@ -54,25 +54,38 @@
             margin: 10px 0;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
         }
-        #car1-info {
+        #phone1-info {
             background-color: #ffebee;
             border: 2px solid #f44336;
         }
-        #car2-info {
+        #phone2-info {
             background-color: #e3f2fd;
             border: 2px solid #2196f3;
         }
+        .connection-status {
+            font-weight: bold;
+            margin-top: 10px;
+        }
+        .connected {
+            color: green;
+        }
+        .disconnected {
+            color: red;
+        }
         @media (max-width: 600px) {
-            .car-box { width: 100%; }
+            .phone-box { width: 100%; }
         }
     </style>
-    <!-- Leaflet fallback CSS -->
+    <!-- Leaflet CSS -->
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <!-- Firebase SDK -->
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.6.0/firebase-database-compat.js"></script>
 </head>
 <body>
     <header>
         <h1>Kaiser University Campus Nicaragua</h1>
-        <p>Sistema de seguimiento de autos de juguete</p>
+        <p>Sistema de seguimiento de teléfonos en tiempo real</p>
     </header>
     
     <div class="controls">
@@ -81,45 +94,61 @@
         <button onclick="centerMap()">Centrar Mapa</button>
     </div>
     
-    <div class="car-info">
-        <div id="car1-info" class="car-box">
-            <h3>Auto 1 (Rojo)</h3>
-            <p>Latitud: <span id="car1-lat">0</span></p>
-            <p>Longitud: <span id="car1-lng">0</span></p>
-            <p>Última actualización: <span id="car1-time">Nunca</span></p>
+    <div class="phone-info">
+        <div id="phone1-info" class="phone-box">
+            <h3>Teléfono 1 (Rojo)</h3>
+            <p>Latitud: <span id="phone1-lat">0</span></p>
+            <p>Longitud: <span id="phone1-lng">0</span></p>
+            <p>Última actualización: <span id="phone1-time">Nunca</span></p>
+            <p class="connection-status" id="phone1-status">Estado: <span class="disconnected">Desconectado</span></p>
         </div>
-        <div id="car2-info" class="car-box">
-            <h3>Auto 2 (Azul)</h3>
-            <p>Latitud: <span id="car2-lat">0</span></p>
-            <p>Longitud: <span id="car2-lng">0</span></p>
-            <p>Última actualización: <span id="car2-time">Nunca</span></p>
+        <div id="phone2-info" class="phone-box">
+            <h3>Teléfono 2 (Azul)</h3>
+            <p>Latitud: <span id="phone2-lat">0</span></p>
+            <p>Longitud: <span id="phone2-lng">0</span></p>
+            <p>Última actualización: <span id="phone2-time">Nunca</span></p>
+            <p class="connection-status" id="phone2-status">Estado: <span class="disconnected">Desconectado</span></p>
         </div>
     </div>
     
     <div id="map"></div>
 
-    <!-- Leaflet fallback JS -->
+    <!-- Leaflet JS -->
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     
     <script>
-        // ===== CONFIGURACIÓN DEL CAMPUS ===== //
-        const CAMPUS_CENTER = { lat: 11.906944, lng: -86.204694 }; // New coordinates for Keiser Nicaragua
+        // ===== FIREBASE CONFIGURATION ===== //
+        const firebaseConfig = {
+            apiKey: "AIzaSyDFNnceFaKprkQ9_OK_bxtuutocUpzfYA0",
+            authDomain: "your-project-id.firebaseapp.com",
+            databaseURL: "https://your-project-id.firebaseio.com",
+            projectId: "your-project-id",
+            storageBucket: "your-project-id.appspot.com",
+            messagingSenderId: "123456789012",
+            appId: "1:123456789012:web:abcdef1234567890"
+        };
+        
+        // Initialize Firebase
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        // ===== CAMPUS CONFIGURATION ===== //
+        const CAMPUS_CENTER = { lat: 11.906944, lng: -86.204694 }; // Coordenadas de Kaiser Nicaragua
         const BUILDINGS = [
             { name: "Edificio Principal", pos: { lat: 11.9072, lng: -86.2048 } },
             { name: "Biblioteca", pos: { lat: 11.9067, lng: -86.2045 } },
             { name: "Canchas", pos: { lat: 11.9065, lng: -86.2050 } }
         ];
 
-
-        // ===== VARIABLES GLOBALES ===== //
-        let map, car1Marker, car2Marker;
-        let watchId1, watchId2;
+        // ===== GLOBAL VARIABLES ===== //
+        let map, phone1Marker, phone2Marker;
         let useLeaflet = false;
+        let phone1Ref, phone2Ref;
 
-        // ===== FUNCIONES PRINCIPALES ===== //
+        // ===== MAIN FUNCTIONS ===== //
         function initMap() {
             try {
-                // Intenta cargar Google Maps
+                // Try to load Google Maps
                 map = new google.maps.Map(document.getElementById("map"), {
                     center: CAMPUS_CENTER,
                     zoom: 17,
@@ -128,7 +157,7 @@
                 });
                 addBuildings();
             } catch (e) {
-                // Fallback a Leaflet/OpenStreetMap
+                // Fallback to Leaflet/OpenStreetMap
                 useLeaflet = true;
                 map = L.map('map').setView([CAMPUS_CENTER.lat, CAMPUS_CENTER.lng], 17);
                 L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png').addTo(map);
@@ -154,80 +183,85 @@
         }
 
         function startTracking() {
-            stopTracking();
+            // Initialize Firebase listeners for both phones
+            phone1Ref = database.ref('phones/phone1');
+            phone2Ref = database.ref('phones/phone2');
             
-            // Configura marcadores
+            // Create markers
             if (useLeaflet) {
-                car1Marker = L.marker([CAMPUS_CENTER.lat, CAMPUS_CENTER.lng], {
+                phone1Marker = L.marker([CAMPUS_CENTER.lat, CAMPUS_CENTER.lng], {
                     icon: L.icon({
                         iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-red.png',
                         iconSize: [25, 41]
                     })
                 }).addTo(map);
                 
-                car2Marker = L.marker([CAMPUS_CENTER.lat, CAMPUS_CENTER.lng], {
+                phone2Marker = L.marker([CAMPUS_CENTER.lat, CAMPUS_CENTER.lng], {
                     icon: L.icon({
                         iconUrl: 'https://raw.githubusercontent.com/pointhi/leaflet-color-markers/master/img/marker-icon-blue.png',
                         iconSize: [25, 41]
                     })
                 }).addTo(map);
             } else {
-                car1Marker = new google.maps.Marker({
+                phone1Marker = new google.maps.Marker({
                     position: CAMPUS_CENTER,
                     map: map,
                     icon: "http://maps.google.com/mapfiles/ms/icons/red-dot.png"
                 });
                 
-                car2Marker = new google.maps.Marker({
+                phone2Marker = new google.maps.Marker({
                     position: CAMPUS_CENTER,
                     map: map,
                     icon: "http://maps.google.com/mapfiles/ms/icons/blue-dot.png"
                 });
             }
 
-            // Inicia seguimiento
-            if (navigator.geolocation) {
-                watchId1 = navigator.geolocation.watchPosition(
-                    pos => updatePosition(1, pos),
-                    err => console.error("Error GPS Auto 1:", err),
-                    { enableHighAccuracy: true }
-                );
-                
-                watchId2 = navigator.geolocation.watchPosition(
-                    pos => updatePosition(2, pos),
-                    err => console.error("Error GPS Auto 2:", err),
-                    { enableHighAccuracy: true }
-                );
-            } else {
-                alert("Geolocalización no soportada en este dispositivo");
-            }
+            // Listen for phone 1 updates
+            phone1Ref.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    updatePosition(1, data);
+                    document.getElementById('phone1-status').innerHTML = 'Estado: <span class="connected">Conectado</span>';
+                }
+            });
+
+            // Listen for phone 2 updates
+            phone2Ref.on('value', (snapshot) => {
+                const data = snapshot.val();
+                if (data) {
+                    updatePosition(2, data);
+                    document.getElementById('phone2-status').innerHTML = 'Estado: <span class="connected">Conectado</span>';
+                }
+            });
         }
 
-        function updatePosition(carNum, position) {
+        function updatePosition(phoneNum, position) {
             const pos = {
-                lat: position.coords.latitude,
-                lng: position.coords.longitude,
-                time: new Date().toLocaleTimeString()
+                lat: position.lat,
+                lng: position.lng,
+                time: new Date(position.timestamp).toLocaleTimeString()
             };
             
-            if (carNum === 1) {
-                if (useLeaflet) car1Marker.setLatLng([pos.lat, pos.lng]);
-                else car1Marker.setPosition(pos);
-                document.getElementById('car1-lat').textContent = pos.lat.toFixed(6);
-                document.getElementById('car1-lng').textContent = pos.lng.toFixed(6);
-                document.getElementById('car1-time').textContent = pos.time;
+            if (phoneNum === 1) {
+                if (useLeaflet) phone1Marker.setLatLng([pos.lat, pos.lng]);
+                else phone1Marker.setPosition(pos);
+                document.getElementById('phone1-lat').textContent = pos.lat.toFixed(6);
+                document.getElementById('phone1-lng').textContent = pos.lng.toFixed(6);
+                document.getElementById('phone1-time').textContent = pos.time;
             } else {
-                if (useLeaflet) car2Marker.setLatLng([pos.lat, pos.lng]);
-                else car2Marker.setPosition(pos);
-                document.getElementById('car2-lat').textContent = pos.lat.toFixed(6);
-                document.getElementById('car2-lng').textContent = pos.lng.toFixed(6);
-                document.getElementById('car2-time').textContent = pos.time;
+                if (useLeaflet) phone2Marker.setLatLng([pos.lat, pos.lng]);
+                else phone2Marker.setPosition(pos);
+                document.getElementById('phone2-lat').textContent = pos.lat.toFixed(6);
+                document.getElementById('phone2-lng').textContent = pos.lng.toFixed(6);
+                document.getElementById('phone2-time').textContent = pos.time;
             }
         }
 
         function stopTracking() {
-            if (watchId1) navigator.geolocation.clearWatch(watchId1);
-            if (watchId2) navigator.geolocation.clearWatch(watchId2);
+            if (phone1Ref) phone1Ref.off();
+            if (phone2Ref) phone2Ref.off();
+            document.getElementById('phone1-status').innerHTML = 'Estado: <span class="disconnected">Desconectado</span>';
+            document.getElementById('phone2-status').innerHTML = 'Estado: <span class="disconnected">Desconectado</span>';
         }
 
         function centerMap() {
@@ -238,9 +272,12 @@
                 map.setZoom(17);
             }
         }
+
+        // Initialize the map when the page loads
+        window.onload = initMap;
     </script>
 
-    <!-- Google Maps API (reemplaza con tu clave) -->
+    <!-- Google Maps API (replace with your key) -->
     <script async defer
         src="https://maps.googleapis.com/maps/api/js?key=AIzaSyDFNnceFaKprkQ9_OK_bxtuutocUpzfYA0&callback=initMap&language=es">
     </script>
